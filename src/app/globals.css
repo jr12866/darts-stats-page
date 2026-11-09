@@ -1,0 +1,232 @@
+@import "tailwindcss";
+
+/*
+ * DartLeague — "The Pub" theme.
+ *
+ * Dark, warm and wood-panelled: aged mahogany surfaces, brass and shamrock
+ * green accents, and cream text the colour of good lamplight.
+ */
+
+:root {
+  /* Deep, warm brown-black — the back wall of a dim pub. */
+  --background: #14100c;
+
+  /* Slightly lifted, like a varnished wooden table top. */
+  --surface: #1e1813;
+  --surface-raised: #271f18;
+
+  /* Cream, the colour of lamplight on a wall. */
+  --foreground: #f2e8d5;
+  --muted: #a3937a;
+
+  /* Brass, aged. */
+  --accent: #c9a227;
+  --accent-soft: #2a2313;
+
+  --border: #3a2f24;
+  --border-strong: #4d3e2e;
+
+  /* Shamrock green, for the Irish in the name. */
+  --green: #2f7d4f;
+  --green-soft: #16281d;
+
+  /* Warm red, for the darts. */
+  --red: #b5453a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-red: var(--red);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* A faint warm vignette, like light falling off towards the corners. */
+  background-image:
+    radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      rgba(201, 162, 39, 0.07),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 50% 100%,
+      rgba(47, 125, 79, 0.05),
+      transparent 70%
+    );
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* A warm hairline along the top of the page, like a brass rail. */
+body::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 20%,
+    var(--accent) 80%,
+    transparent
+  );
+  opacity: 0.6;
+}
+
+/* Selection colour, in the pub green. */
+::selection {
+  background: rgba(47, 125, 79, 0.45);
+  color: var(--foreground);
+}
+
+/* Scrollbar, dressed for the theme. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Focus rings in brass. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Shared pub textures and flourishes
+ * --------------------------------------------------------------------------- */
+
+/**
+ * Wood grain for panels. Two repeating linear gradients at slightly
+ * different angles give a plausible, cheap veneer.
+ */
+.wood-grain {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.14) 0px,
+      rgba(0, 0, 0, 0.14) 1px,
+      transparent 1px,
+      transparent 7px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.015) 0px,
+      rgba(255, 255, 255, 0.015) 1px,
+      transparent 1px,
+      transparent 11px
+    );
+}
+
+/**
+ * The site header. Dark lacquered wood with a brass underline.
+ */
+.pub-header {
+  background:
+    linear-gradient(180deg, rgba(201, 162, 39, 0.07), transparent),
+    var(--surface);
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow:
+    0 1px 0 rgba(201, 162, 39, 0.18),
+    0 8px 24px -12px rgba(0, 0, 0, 0.9);
+}
+
+/**
+ * A brass plaque effect for the wordmark.
+ */
+.brass-text {
+  background: linear-gradient(
+    180deg,
+    #f0d98a 0%,
+    var(--accent) 45%,
+    #8a6d16 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+/**
+ * The shamrock. Used as a small decorative mark beside headings.
+ */
+.clover {
+  display: inline-block;
+  color: var(--green);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+/**
+ * Cards get a soft warm glow on hover, like light catching the varnish.
+ */
+.pub-card {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.pub-card:hover {
+  border-color: var(--border-strong);
+  box-shadow:
+    0 0 0 1px rgba(201, 162, 39, 0.12),
+    0 10px 30px -14px rgba(0, 0, 0, 0.95);
+}
+
+/**
+ * Table row highlight, like a brass edge catching the light.
+ */
+.pub-row {
+  transition: background-color 120ms ease;
+}
+
+.pub-row:hover {
+  background-color: rgba(201, 162, 39, 0.05);
+}
+
+/**
+ * Numbered rank badges for the standings tables.
+ */
+.rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.rank-top {
+  background: linear-gradient(180deg, #f0d98a, var(--accent));
+  border-color: rgba(240, 217, 138, 0.5);
+  color: #2a2010;
+  box-shadow: 0 1px 6px -1px rgba(201, 162, 39, 0.55);
+}

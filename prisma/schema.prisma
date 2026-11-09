@@ -1,0 +1,436 @@
+// DartLeague data model.
+//
+// Shape:
+//   League -> Group -> Team -> Player (name-only records)
+//                 -> Template -> MatchSpec
+//   League -> Season
+//   League -> StatDef (league-configured tracked stats)
+//   League -> Night -> Match -> Leg -> StatEvent
+//   League -> PointsEntry (manual, per player per match)
+//
+// Roles are league-scoped via LeagueMember. Platform admin is a User flag.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+// Game mode for a match spec. ZERO1 = countdown to zero. CRICKET = race to target.
+enum GameMode {
+  ZERO1
+  CRICKET
+}
+
+// How a stat's value is entered by the scorer.
+// VALUE = the actual number (e.g. high out of 140) -> leaderboard by max.
+// COUNT = how many times hit (e.g. three 100+ scores) -> leaderboard by sum.
+enum StatEntryType {
+  VALUE
+  COUNT
+}
+
+// Which game mode a stat applies to. ANY = usable in any match mode.
+enum StatMode {
+  ANY
+  ZERO1
+  CRICKET
+}
+
+// Checkout rule for a ZERO1 leg.
+enum CheckoutRule {
+  DOUBLE_OUT
+  DOUBLE_IN
+  NONE
+}
+
+// What the team standings table is ranked by.
+enum TeamRankingMode {
+  POINTS
+  WINS
+}
+
+// Membership roles within a league. Roles are independent flags rather than a
+// ladder, so someone can be both a scorer and a league admin.
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  passwordHash    String
+  isPlatformAdmin Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships LeagueMember[]
+  sessions    Session[]
+  changeLogs  ChangeLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// League structure
+// ---------------------------------------------------------------------------
+
+model League {
+  id   String @id @default(cuid())
+  slug String @unique
+  name String
+
+  // How teams are ranked on the standings table.
+  teamRankingMode TeamRankingMode @default(POINTS)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seasons    Season[]
+  groups     Group[]
+  players    Player[]
+  statDefs   StatDef[]
+  members    LeagueMember[]
+  nights     Night[]
+  points     PointsEntry[]
+  changeLogs ChangeLog[]
+}
+
+model LeagueMember {
+  id          String   @id @default(cuid())
+  leagueId    String
+  userId      String
+  isLeagueAdmin Boolean @default(false)
+  isScorer    Boolean   @default(false)
+  createdAt   DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([leagueId])
+  @@index([userId])
+}
+
+model Season {
+  id        String    @id @default(cuid())
+  leagueId  String
+  name      String
+  startDate DateTime?
+  endDate   DateTime?
+  archived  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  nights Night[]
+
+  @@index([leagueId])
+}
+
+/// A flat division within a league. Owns its teams and its match template.
+model Group {
+  id        String   @id @default(cuid())
+  leagueId  String
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  teams    Team[]
+  template Template?
+  nights   Night[]
+
+  @@unique([leagueId, name])
+  @@index([leagueId])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  groupId   String
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group  Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  roster TeamPlayer[]
+  sideA  Match[]      @relation("MatchSideA")
+  sideB  Match[]      @relation("MatchSideB")
+
+  @@unique([groupId, name])
+  @@index([groupId])
+}
+
+/// Membership of a player on a team roster. Advisory: scorers may enter any
+/// league player as a participant, which is how substitutes are handled.
+model TeamPlayer {
+  id        String   @id @default(cuid())
+  teamId    String
+  playerId  String
+  createdAt DateTime @default(now())
+
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, playerId])
+  @@index([playerId])
+}
+
+/// A shooter. Name-only record scoped to a league; players have no login.
+model Player {
+  id        String   @id @default(cuid())
+  leagueId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league   League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  rosters  TeamPlayer[]
+  participations MatchParticipant[]
+  statEvents StatEvent[]
+  points    PointsEntry[]
+
+  @@unique([leagueId, name])
+  @@index([leagueId])
+}
+
+// ---------------------------------------------------------------------------
+// Templates and match specs
+// ---------------------------------------------------------------------------
+
+/// The reusable format spec for a group's league night.
+model Template {
+  id        String   @id @default(cuid())
+  groupId   String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group      Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  matchSpecs MatchSpec[]
+  nights     Night[]
+}
+
+/// One match slot in a template (e.g. "Singles 501, 3 legs" or
+/// "Doubles Cricket, 3 legs" or "Team 801, 1 leg").
+model MatchSpec {
+  id            String       @id @default(cuid())
+  templateId    String
+  name          String
+  sortOrder     Int          @default(0)
+  mode          GameMode
+  playersPerSide Int         @default(1)
+  rotation      Boolean      @default(false)
+  legCount      Int          @default(3)
+  checkoutRule  CheckoutRule @default(DOUBLE_OUT)
+  cricketTarget Int?
+  startScore    Int?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  matches  Match[]
+
+  @@index([templateId])
+}
+
+// ---------------------------------------------------------------------------
+// Played data
+// ---------------------------------------------------------------------------
+
+/// An instance of a group's template on a date.
+model Night {
+  id         String   @id @default(cuid())
+  leagueId   String
+  groupId    String
+  templateId String
+  seasonId   String?
+  date       DateTime
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  league   League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  season   Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  matches  Match[]
+
+  @@index([leagueId, date])
+  @@index([groupId])
+  @@index([seasonId])
+}
+
+/// A played match within a night. The format is copied from the MatchSpec so
+/// historical results keep their format even if the template later changes.
+model Match {
+  id           String   @id @default(cuid())
+  nightId      String
+  matchSpecId  String?
+  sortOrder    Int      @default(0)
+  name         String?
+
+  mode          GameMode
+  playersPerSide Int     @default(1)
+  rotation      Boolean      @default(false)
+  legCount      Int          @default(3)
+  checkoutRule  CheckoutRule @default(DOUBLE_OUT)
+  cricketTarget Int?
+  startScore    Int?
+
+  sideAId String?
+  sideBId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  night        Night              @relation(fields: [nightId], references: [id], onDelete: Cascade)
+  matchSpec    MatchSpec?         @relation(fields: [matchSpecId], references: [id], onDelete: SetNull)
+  sideA        Team?              @relation("MatchSideA", fields: [sideAId], references: [id], onDelete: SetNull)
+  sideB        Team?              @relation("MatchSideB", fields: [sideBId], references: [id], onDelete: SetNull)
+  participants MatchParticipant[]
+  legs         Leg[]
+  points       PointsEntry[]
+
+  @@index([nightId])
+}
+
+/// Which players took part on each side of a match.
+model MatchParticipant {
+  id       String @id @default(cuid())
+  matchId  String
+  playerId String
+  side     Int    // 1 = side A, 2 = side B
+  position Int    @default(0) // shooting order within the side
+
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@index([playerId])
+}
+
+/// One game/leg of a match. The result is always at the side level, even for
+/// 4-per-side rotation matches.
+model Leg {
+  id          String   @id @default(cuid())
+  matchId     String
+  index       Int
+  winningSide Int? // 1 = side A, 2 = side B; null = not yet played
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  match      Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  statEvents StatEvent[]
+
+  @@unique([matchId, index])
+}
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+/// A league-configured tracked stat, e.g. "100+", "140+", "180", "High Out",
+/// "5 Marks", "3+ Bulls". The system never interprets these; the league
+/// decides what each one means and the scorer enters the counts.
+model StatDef {
+  id        String        @id @default(cuid())
+  leagueId  String
+  name      String
+  mode      StatMode      @default(ANY)
+  entryType StatEntryType @default(COUNT)
+  sortOrder Int           @default(0)
+  retired   Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  league     League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  statEvents StatEvent[]
+
+  @@unique([leagueId, name])
+  @@index([leagueId])
+}
+
+/// A recorded achievement by one player in one leg.
+model StatEvent {
+  id        String   @id @default(cuid())
+  legId     String
+  playerId  String
+  statDefId String
+  value     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leg     Leg     @relation(fields: [legId], references: [id], onDelete: Cascade)
+  player  Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  statDef StatDef @relation(fields: [statDefId], references: [id], onDelete: Cascade)
+
+  @@index([legId])
+  @@index([playerId, statDefId])
+}
+
+// ---------------------------------------------------------------------------
+// Points
+// ---------------------------------------------------------------------------
+
+/// Manually entered league points for one player in one match.
+model PointsEntry {
+  id        String   @id @default(cuid())
+  leagueId  String
+  matchId   String
+  playerId  String
+  points    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId])
+  @@index([leagueId])
+  @@index([playerId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// Record of a correction made to existing data.
+model ChangeLog {
+  id        String   @id @default(cuid())
+  leagueId  String
+  userId    String
+  entity    String
+  entityId  String
+  field     String
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, createdAt])
+}
